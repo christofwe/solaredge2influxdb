@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  solaredge2influxdb:
+    build: .
+    container_name: solaredge2influxdb
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - KEY=$KEY
+    command: '/bin/sh -c "while sleep $UPDATE_INTERVAL; do python /app/solaredge2influxdb.py; done"'
