@@ -8,5 +8,12 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      - KEY=$KEY
+      - INFLUXDB_HOST=$INFLUXDB_HOST
+      - INFLUXDB_PORT=$INFLUXDB_PORT
+      - INFLUXDB_USER=$INFLUXDB_USER
+      - INFLUXDB_PASS=$INFLUXDB_PASS
+      - INFLUXDB_DB_NAME=$INFLUXDB_DB_NAME
+      - SOLAREDGE_API=$SOLAREDGE_API
+      - SOLAREDGE_API_KEY=$SOLAREDGE_API_KEY
+      - SOLAREDGE_ID=$SOLAREDGE_ID
     command: '/bin/sh -c "while sleep $UPDATE_INTERVAL; do python /app/solaredge2influxdb.py; done"'
