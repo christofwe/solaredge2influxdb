@@ -16,4 +16,5 @@ services:
       - SOLAREDGE_API=$SOLAREDGE_API
       - SOLAREDGE_API_KEY=$SOLAREDGE_API_KEY
       - SOLAREDGE_ID=$SOLAREDGE_ID
+      - TZ=$TZ
     command: '/bin/sh -c "while sleep $UPDATE_INTERVAL; do python /app/solaredge2influxdb.py; done"'

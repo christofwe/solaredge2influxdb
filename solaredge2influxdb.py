@@ -1,7 +1,8 @@
 import os
 import requests
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 
 from influxdb import InfluxDBClient
 
@@ -15,47 +16,59 @@ SOLAREDGE_API = os.environ['SOLAREDGE_API']
 SOLAREDGE_API_KEY = os.environ['SOLAREDGE_API_KEY']
 SOLAREDGE_ID = os.environ['SOLAREDGE_ID']
 
+
+tz = pytz.timezone(os.environ['TZ'])
+local = tz.localize(datetime.now())
+timestamp = local.strftime("%Y-%m-%dT%H:%M:%S%Z%z")
+
+influx_client = InfluxDBClient(host=INFLUXDB_HOST, port=INFLUXDB_PORT, username=INFLUXDB_USER, password=INFLUXDB_PASS)
+influx_client.switch_database(INFLUXDB_DB_NAME)
+influx_body = []
+
 solaredge_api_base_url = f"{SOLAREDGE_API}"
 solaredge_headers = {'Content-Type': 'application/json'}
-solaredge_params = {'api_key': SOLAREDGE_API_KEY}
+solaredge_params = {
+  'api_key': SOLAREDGE_API_KEY,
+  'startDate': (local - timedelta(days=1)).strftime("%Y-%m-%d"),
+  'endDate': local.strftime("%Y-%m-%d")
+}
+daily_energy = {}
+monthly_energy = {}
 
-local = datetime.now()
-timestamp = local.strftime("%Y-%m-%dT%H:%M:%SZ")
+def get_site_energy(time_unit, headers, params):
+  params.update({'timeUnit': time_unit})
+  site_energy = requests.get(f"{SOLAREDGE_API}/site/{SOLAREDGE_ID}/energy", headers=headers, params=params)
+  site_energy.raise_for_status()
+  return site_energy.json()
 
-if local.hour == 12:
-  influx_client = InfluxDBClient(host=INFLUXDB_HOST, port=INFLUXDB_PORT, username=INFLUXDB_USER, password=INFLUXDB_PASS)
-  influx_client.switch_database(INFLUXDB_DB_NAME)
-
-  json_body = []
-
-  try:
-    data_period_response = requests.get(f"{SOLAREDGE_API}/site/{SOLAREDGE_ID}/dataPeriod", headers=solaredge_headers, params=solaredge_params)
-    data_period_response.raise_for_status()
-    data_period = data_period_response.json()
-
-    solaredge_params.update(data_period['dataPeriod'])
-    solaredge_params.update({'timeUnit': 'MONTH'})
-    energy_response = requests.get(f"{SOLAREDGE_API}/site/{SOLAREDGE_ID}/energy", headers=solaredge_headers, params=solaredge_params)
-    energy_response.raise_for_status()
-    energy = energy_response.json()
-
-    for value in energy['energy']['values']:
-      item = {
-        "measurement": "Production",
-        "tags": {
-          "type": "report"
-        },
-        "time": value['date'],
-        "fields": {
-          "Wh": value['value']
-        }
+def generate_data_points(energy):
+  data_points = []
+  time_unit = energy['energy']['timeUnit']
+  unit = energy['energy']['unit']
+  for value in energy['energy']['values']:
+    timestamp = tz.localize(datetime.fromisoformat(value['date']))
+    data_point = {
+      "measurement": f"production_{time_unit}",
+      "tags": {
+        "type": "report",
+        "period": time_unit
+      },
+      "time": timestamp.isoformat(),
+      "fields": {
+        unit: value['value']
       }
-      json_body.append(item)
+    }
+    data_points.append(data_point)
+  return data_points
 
-    influxdb_write = influx_client.write_points(json_body)
-    print(f"{timestamp} influxdb_write: {influxdb_write}")
+if local.hour == 1:
+  influx_body.extend(generate_data_points(get_site_energy("DAY", solaredge_headers, solaredge_params)))
 
-  except requests.exceptions.HTTPError as error:
-    print(f"solaredge error: {error}")
-    print(f"data_period_response status_code: {data_period_response.status_code}")
-    print(f"energy_response status_code: {energy_response.status_code}")
+if local.day == 1:
+  influx_body.extend(generate_data_points(get_site_energy("MONTH", solaredge_headers, solaredge_params)))
+
+if influx_body:
+  influxdb_write = influx_client.write_points(influx_body)
+  print(f"{timestamp} influxdb_write: {influxdb_write}")
+else:
+  print(f"{timestamp} influxdb_write: no")
