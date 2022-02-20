@@ -16,7 +16,6 @@ SOLAREDGE_API = os.environ['SOLAREDGE_API']
 SOLAREDGE_API_KEY = os.environ['SOLAREDGE_API_KEY']
 SOLAREDGE_ID = os.environ['SOLAREDGE_ID']
 
-
 tz = pytz.timezone(os.environ['TZ'])
 local = tz.localize(datetime.now())
 timestamp = local.strftime("%Y-%m-%dT%H:%M:%S%Z%z")
@@ -25,7 +24,6 @@ influx_client = InfluxDBClient(host=INFLUXDB_HOST, port=INFLUXDB_PORT, username=
 influx_client.switch_database(INFLUXDB_DB_NAME)
 influx_body = []
 
-solaredge_api_base_url = f"{SOLAREDGE_API}"
 solaredge_headers = {'Content-Type': 'application/json'}
 solaredge_params = {
   'api_key': SOLAREDGE_API_KEY,
@@ -61,11 +59,9 @@ def generate_data_points(energy):
     data_points.append(data_point)
   return data_points
 
-if local.hour == 1:
-  influx_body.extend(generate_data_points(get_site_energy("DAY", solaredge_headers, solaredge_params)))
-
-if local.day == 1:
-  influx_body.extend(generate_data_points(get_site_energy("MONTH", solaredge_headers, solaredge_params)))
+influx_body.extend(generate_data_points(get_site_energy("DAY", solaredge_headers, solaredge_params)))
+influx_body.extend(generate_data_points(get_site_energy("MONTH", solaredge_headers, solaredge_params)))
+influx_body.extend(generate_data_points(get_site_energy("YEAR", solaredge_headers, solaredge_params)))
 
 if influx_body:
   influxdb_write = influx_client.write_points(influx_body)
